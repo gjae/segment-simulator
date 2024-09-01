@@ -59,7 +59,7 @@ class NewSegment:
 
     @property
     def total_bytes(self) -> int:
-        return self.base + self.limit
+        return self.limit - self.base
 
 class SegmentTable:
     def __init__(self):
