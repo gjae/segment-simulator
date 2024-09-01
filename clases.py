@@ -95,7 +95,7 @@ class SegmentTable:
             if segment[4] <= memory_required:
                 _, base, limit, _, bytes_usage, _ = segment
                 return NewSegment(base=base, limit=limit, segment_table_index=idx, bytes=bytes_usage)
-            print("P ",segment)
+            
             if len(self.segments) <= idx or self.segments[idx+1][5] == StatusEnum.FULL:
                 return None
             
