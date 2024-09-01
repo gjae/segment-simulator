@@ -22,7 +22,7 @@ class Segment:
 
     @property
     def total_bytes(self) -> int:
-        return self.base + self.limit
+        return self.limit - self.base
 
 class Process:
     pid: int
@@ -76,22 +76,26 @@ class SegmentTable:
         """
         self.segments: List[Process] = []
 
+    def list_segments(self):
+        print(self.segments)
+
     def get_memory_usage(self) -> int:
         total = 0
         for segment in self.segments:
-            if segment[5] == StatusEnum.FULL:
+            if segment[5] == StatusEnum.FREE:
                 continue
-            total += segment[5].total_bytes_usage()
+            total += segment[4]
 
         return total
 
     def has_segments_available_for(self, memory_required) -> Optional[NewSegment]:
-        for segment, idx in enumerate(self.segments):
+        for idx, segment in enumerate(self.segments):
             if segment[5] == StatusEnum.FULL:
                 continue
             if segment[4] <= memory_required:
                 _, base, limit, _, bytes_usage, _ = segment
                 return NewSegment(base=base, limit=limit, segment_table_index=idx, bytes=bytes_usage)
+            print("P ",segment)
             if len(self.segments) <= idx or self.segments[idx+1][5] == StatusEnum.FULL:
                 return None
             
@@ -99,10 +103,10 @@ class SegmentTable:
             # es igual o mayor a los bytes requeridos por el nuevo proceso
             # se "fusionan" los segmentos para tener uno mas grande y se limpian los procesos
             # de esos segmentos
-            if (segment[idx][5] + self.segments[idx+1][5]) >= memory_required:
-                base = segment[idx][1]
+            if (segment[4] + self.segments[idx+1][4]) >= memory_required:
+                base = segment[1]
                 limit = self.segments[idx+1][2]
-                total_bytes = segment[idx][4] + self.segments[idx+1][4]
+                total_bytes = segment[4] + self.segments[idx+1][4]
                 del self.segments[idx+1]
                 return NewSegment(base=base, limit=limit, segment_table_index=idx, bytes=total_bytes)
             
@@ -121,10 +125,20 @@ class SegmentTable:
 
         return new_process
 
+    def exists_processes(self) -> bool:
+        """
+        Comprueba si aun quedan procesos en ejecucion
+        """
 
+        for segment in self.segments:
+            if segment[5] == StatusEnum.FULL:
+                return True
+
+        return False
+    
     def add(self, process: Process, base, limit):
+        process.segments.append(Segment(base_address=base, limit_address=limit))
         new_process = self._format_process(process)
-        new_process[3].segments.append(Segment(base_address=base, limit_address=limit))
         self.segments.append(new_process)
         return new_process
     
@@ -154,7 +168,8 @@ class SegmentTable:
         return new_process
 
     def check_process(self):
-        for segment, idx in enumerate(self.segments):
+        finisheds = set()
+        for idx, segment in enumerate(self.segments):
             process: Process = segment[3]
             if process.finished():
                 self.segments[idx] = (
@@ -165,7 +180,14 @@ class SegmentTable:
                     process.total_bytes_usage(),
                     StatusEnum.FREE
                 )
+                finisheds.add(self.segments[idx])
+                del self.segments[idx]
 
+
+        free = sum(list(map(lambda x: x[4], finisheds)))
+        processing = [i[0] for i in self.segments]
+        print(f"Recolector de basura ha liberado: {free} Bytes ({len(finisheds)} procesos limpiados), en proceso: {processing}")
+        return finisheds
 
 class RunSegmentation:
     segmentation_table: SegmentTable
@@ -182,7 +204,7 @@ class RunSegmentation:
     def __init__(self, max_memory: int):
         self.memory = max_memory
         self.segmentation_table = SegmentTable()
-        self.current_base_address = 0x0000001
+        self.current_base_address = 0
         self.process_queue = []
         
     def get_current_base_address(self) -> str:
@@ -192,12 +214,22 @@ class RunSegmentation:
         self.process_queue.insert(index, process)
 
     def check_queue(self):
+        self.check_for_process_finished()
         if len(self.process_queue) == 0:
             return True
-        
-        deque = self.process_queue.pop()
 
-        if self.segmentation_table.add_process(deque) is not None:
+        deque = self.process_queue.pop()
+        inserted = self.segmentation_table.add_process(deque)
+        if inserted is not None:
+            print(f"PID: {deque.pid} proceso sacado de la cola y en ejecucion")
+            print(
+                f"PID {inserted[0]} (DESENCOLADO)\n",
+                "Memoria", deque.memory, "\n",
+                "SEGMENTO : ", hex(self.segmentation_table.segments[-1][3].segments[0].base), " - ", hex(self.segmentation_table.segments[-1][3].segments[0].limit) , "(", self.segmentation_table.segments[0][3].memory, "Bytes )\n", 
+                "DIRECCION BASE ACTUAL: ", self.get_current_base_address(), "\n", 
+                "MEMORIA USADA: ", self.segmentation_table.get_memory_usage(), "Bytes \n",
+                self.memory - self.segmentation_table.get_memory_usage(), "Bytes disponibles"
+            )
             self.check_queue()
         else:
             self.append_queue_process(deque, len(self.process_queue))
@@ -206,25 +238,36 @@ class RunSegmentation:
         return False
 
     def start_new_process(self, pid):
+        memory_usage = self.memory - self.segmentation_table.get_memory_usage()
         memory_usage = randint(1, self.memory)
         process = Process(pid=pid, memory=memory_usage, segments=[])
-        process_inserted = self.segmentation_table.add_process(process)
-        if process_inserted is not None:
-            self.current_base_address = process_inserted[2]
-            return True
-
+        inserted = None
+        
+        print("Nuevo proceso: ", process.pid, ", requiere: ", memory_usage, "Bytes / ", "Usado: ", self.segmentation_table.get_memory_usage(), " / Base: ", self.current_base_address)
         self.check_queue()
-        while (self.current_base_address + process.memory) <  self.segmentation_table.get_memory_usage():
-            process.segments.append(Segment(base_address=self.current_base_address, limit_address=self.current_base_address + memory_usage))
-            self.segmentation_table.add(
+        if (self.segmentation_table.get_memory_usage() + process.memory) <= self.memory:
+            print("Insertando proceso ", process.pid)
+            # process.segments.append(Segment(base_address=self.current_base_address, limit_address=self.current_base_address + memory_usage))
+            inserted = self.segmentation_table.add(
                 process, 
                 self.current_base_address, 
                 self.current_base_address + process.memory
             )
-            self.current_base_address = self.current_base_address + process.memory
-            return True
-        
+            self.current_base_address = self.current_base_address + process.memory + 1
+            return inserted
+        else:
+            process_inserted = self.segmentation_table.add_process(process)
+            if process_inserted is not None:
+                self.current_base_address = process_inserted[2]  + 1
+                return process_inserted
+            
         self.append_queue_process(process)
+        print("Proceso en cola ... ")
+        return None
 
     def check_for_process_finished(self):
-        self.segmentation_table.check_process()
+        finished = self.segmentation_table.check_process()
+
+        if len(finished) > 0:
+            for removed in finished:
+                print(f"PID {removed[0]}: proceso terminado") 
