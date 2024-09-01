@@ -188,18 +188,20 @@ class RunSegmentation:
     def get_current_base_address(self) -> str:
         return hex(self.current_base_address)
 
-    def append_queue_process(self, process: Process):
-        self.process_queue.append(process)
+    def append_queue_process(self, process: Process, index = 0):
+        self.process_queue.insert(index, process)
 
     def check_queue(self):
         if len(self.process_queue) == 0:
             return True
         
-        deque = self.process_queue[0]
+        deque = self.process_queue.pop()
 
         if self.segmentation_table.add_process(deque) is not None:
-            del self.process_queue[0]
             self.check_queue()
+        else:
+            self.append_queue_process(deque, len(self.process_queue))
+            return True
         
         return False
 
