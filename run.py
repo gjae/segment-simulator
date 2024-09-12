@@ -1,3 +1,4 @@
+
 import tkinter as tk
 from tkinter import messagebox
 import clases as segmentator
@@ -8,8 +9,10 @@ class MemorySimulatorApp:
         self.root.title("Simulador de Segmentación de Memoria")
 
         # Variables de la interfaz
+
         self.memory_var = tk.StringVar()
         self.process_var = tk.StringVar()
+
 
         # Etiquetas y campos de entrada
         tk.Label(root, text="Memoria Total (Bytes):").grid(row=0, column=0, padx=10, pady=10)
@@ -22,6 +25,7 @@ class MemorySimulatorApp:
         tk.Button(root, text="Iniciar Simulación", command=self.start_simulation).grid(row=2, column=0, columnspan=2, pady=20)
 
         # Área de texto para mostrar los resultados
+
         self.output_text = tk.Text(root, height=20, width=80)
         self.output_text.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
 

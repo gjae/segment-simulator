@@ -2,6 +2,7 @@ from random import randint
 from enum import IntEnum
 from typing import List, Optional, Tuple
 
+
 # Enumeración que define el estado de un segmento de memoria
 class StatusEnum(IntEnum):
     FULL = 1  # El segmento está ocupado
@@ -10,6 +11,7 @@ class StatusEnum(IntEnum):
 # Clase que representa un segmento de memoria
 class Segment:
     def __init__(self, base_address, limit_address):
+
         self.base = base_address  # Dirección base del segmento
         self.limit = limit_address  # Dirección límite del segmento
 
@@ -17,13 +19,16 @@ class Segment:
     def total_bytes(self) -> int:
         return self.limit - self.base  # Calcula el tamaño total del segmento
 
+
 # Clase que representa un proceso
+
 class Process:
     pid: int
     memory: int
     segments: List[Segment] = []  # Lista de segmentos asociados al proceso
 
     def __init__(self, *, pid, memory, segments=[]):
+
         self.pid = pid  # Identificador del proceso
         self.memory = memory  # Cantidad de memoria que necesita el proceso
         self.segments = segments  # Segmentos que ocupa el proceso
@@ -39,7 +44,9 @@ class Process:
         # Simula si un proceso ha terminado de manera aleatoria
         return randint(1, 1500) % 2 == 0
 
+
 # Clase que representa un nuevo segmento de memoria para agregar a la tabla de segmentos
+
 class NewSegment:
     base: int
     limit: int
@@ -85,6 +92,7 @@ class SegmentTable:
                 _, base, limit, _, bytes_usage, _ = segment
                 return NewSegment(base=base, limit=limit, segment_table_index=idx, bytes=bytes_usage)
             
+
             # Verifica si los segmentos contiguos pueden ser combinados
             if len(self.segments) <= idx or self.segments[idx + 1][5] == StatusEnum.FULL:
                 return None
@@ -95,12 +103,15 @@ class SegmentTable:
                 limit = self.segments[idx + 1][2]
                 total_bytes = segment[4] + self.segments[idx + 1][4]
                 del self.segments[idx + 1]  # Elimina el segundo segmento
+
                 return NewSegment(base=base, limit=limit, segment_table_index=idx, bytes=total_bytes)
             
         return None
     
     def _format_process(self, process: Process) -> Tuple[int, int, int, Process, int, StatusEnum]:
+
         # Crea una tupla que representa un proceso en la tabla de segmentos
+
         new_process = (
             process.pid, 
             process.segments[0].base, 
@@ -112,7 +123,9 @@ class SegmentTable:
         return new_process
 
     def exists_processes(self) -> bool:
+
         # Verifica si hay procesos en la tabla de segmentos
+
         for segment in self.segments:
             if segment[5] == StatusEnum.FULL:
                 return True
@@ -126,7 +139,9 @@ class SegmentTable:
         return new_process
     
     def add_process(self, process: Process):
+
         # Intenta agregar un proceso a la tabla de segmentos
+
         if len(self.segments) == 0:
             # Si la tabla está vacía, agrega el proceso con el primer segmento
             process.segments.append(Segment(0x1, process.memory))
@@ -168,12 +183,22 @@ class SegmentTable:
         print(f"Recolector de basura ha liberado: {free} Bytes ({len(finisheds)} procesos limpiados), en proceso: {processing}")
         return finisheds
 
+
 # Clase que representa la simulación de segmentación de memoria
+
 class RunSegmentation:
     segmentation_table: SegmentTable
     memory: int
 
+
     processes_list: List[Process]
+
+    # Implementa una lista de procesos, en caso de que la "memoria"
+    # no sea suficiente para ejecutar el nuevo proceso que ingresa.
+    
+    # Cuando no se tiene más memoria para un proceso,
+    # se agrega a la cola. Esta lista tiene comportamiento FIFO.
+
     process_queue: List[Process]
 
     def __init__(self, max_memory: int):
@@ -186,7 +211,9 @@ class RunSegmentation:
         return hex(self.current_base_address)  # Devuelve la dirección base actual en formato hexadecimal
 
     def append_queue_process(self, process: Process, index=0):
+
         self.process_queue.insert(index, process)  # Añade un proceso a la cola en una posición específica
+
 
     def check_queue(self):
         self.check_for_process_finished()  # Verifica si hay procesos terminados
@@ -219,8 +246,10 @@ class RunSegmentation:
         print(f"Nuevo proceso: {process.pid}, requiere: {memory_usage} Bytes / Usado: {self.segmentation_table.get_memory_usage()} / Base: {self.get_current_base_address()}")
         
         if (self.segmentation_table.get_memory_usage() + process.memory) <= self.memory:
+
             # Intenta insertar el proceso en la memoria
             print(f"Insertando proceso {process.pid}")
+
             inserted = self.segmentation_table.add(
                 process, 
                 self.current_base_address, 
@@ -231,12 +260,14 @@ class RunSegmentation:
         else:
             process_inserted = self.segmentation_table.add_process(process)
             if process_inserted is not None:
+
                 self.current_base_address = process_inserted[2] + 1  # Actualiza la dirección base
                 return process_inserted
 
             self.append_queue_process(process)  # Añade el proceso a la cola si no se pudo insertar
             print("Proceso en cola ... ")
             return None
+
 
     def check_for_process_finished(self):
         # Verifica y limpia los procesos que han terminado
